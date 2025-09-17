@@ -66,6 +66,10 @@
             background: #a5b4fc; cursor: pointer; border-radius: 50%;
             border: 2px solid #4f46e5;
         }
+        input[type="range"]:disabled::-webkit-slider-thumb {
+            background: #475569;
+            cursor: not-allowed;
+        }
         .tab-button { transition: background-color 0.2s, color 0.2s; }
         .tab-button.active { background-color: #4f46e5; color: #e2e8f0; }
     </style>
@@ -136,7 +140,7 @@
                 </div>
                  <div class="flex items-center gap-2 text-xs text-gray-400 pt-2">
                     <span>Lento</span>
-                    <input type="range" id="time-scale-slider" min="0.05" max="3" step="0.05" value="1" class="w-full">
+                    <input type="range" id="time-scale-slider" min="0.05" max="3" step="0.05" value="0.5" class="w-full">
                     <span>Rápido</span>
                 </div>
             </div>
@@ -261,7 +265,7 @@
             // --- State ---
             const defaultState = {
                 N: 50, T: 293, eta: 1.0e-3, r: 0.5e-6,
-                timeScale: 1.0, visualizationMode: 'traces', boundaryType: 'reflexive',
+                timeScale: 0.5, visualizationMode: 'traces', boundaryType: 'reflexive',
                 driftX: 0, driftY: 0, focusEnabled: false,
                 showTheoreticalMsd: false, showRayleigh: false,
             };
@@ -272,6 +276,22 @@
                 particles: [], msdData: [], radialDisplacements: [],
                 focusedParticleIndex: -1,
             };
+
+            const sliderElements = [
+                dom.timeScaleSlider, dom.nSlider, dom.tempSlider, dom.etaSlider,
+                dom.rSlider, dom.driftXSlider, dom.driftYSlider
+            ];
+
+            function setSlidersDisabled(disabled) {
+                sliderElements.forEach(slider => {
+                    slider.disabled = disabled;
+                    if (disabled) {
+                        slider.parentElement.classList.add('opacity-50', 'cursor-not-allowed');
+                    } else {
+                        slider.parentElement.classList.remove('opacity-50', 'cursor-not-allowed');
+                    }
+                });
+            }
 
             // --- Physics & Simulation Logic ---
             function resetSimulation() {
@@ -288,6 +308,7 @@
                 draw();
                 drawGraph();
                 drawHistogram();
+                setSlidersDisabled(false);
             }
 
             function fullReset() {
@@ -521,6 +542,12 @@
                 histCtx.clearRect(0, 0, dom.histogramCanvas.width, dom.histogramCanvas.height);
                 const data = state.radialDisplacements;
                 if(data.length < 10) return;
+
+                const w = dom.histogramCanvas.width, h = dom.histogramCanvas.height;
+                const padding = { top: 10, bottom: 25, left: 35, right: 10 };
+                const plotWidth = w - padding.left - padding.right;
+                const plotHeight = h - padding.top - padding.bottom;
+                
                 const numBins = 30;
                 let maxVal = 0;
                 data.forEach(v => { maxVal = Math.max(maxVal, v); });
@@ -533,13 +560,12 @@
                     bins[binIndex]++;
                 });
                 const maxFreq = Math.max(1, ...bins);
-                const w = dom.histogramCanvas.width, h = dom.histogramCanvas.height;
-                const barWidth = w / numBins;
+                const barWidth = plotWidth / numBins;
 
                 bins.forEach((freq, i) => {
-                    const barHeight = (freq / maxFreq) * h;
+                    const barHeight = (freq / maxFreq) * plotHeight;
                     histCtx.fillStyle = '#22c55e';
-                    histCtx.fillRect(i * barWidth, h - barHeight, barWidth - 1, barHeight);
+                    histCtx.fillRect(padding.left + i * barWidth, h - padding.bottom - barHeight, barWidth - 1, barHeight);
                 });
 
                 if (state.showRayleigh) {
@@ -549,15 +575,41 @@
                     
                     histCtx.strokeStyle = '#f43f5e'; histCtx.lineWidth = 2;
                     histCtx.beginPath();
-                    for(let i=0; i < w; i++) {
-                        const r = (i / w) * maxVal; // r in um
+                    for(let i=0; i < plotWidth; i++) {
+                        const r = (i / plotWidth) * maxVal; // r in um
                         const pdf = (r / sigma_sq) * Math.exp(-r*r / (2*sigma_sq));
-                        const y = h - (pdf * scalingFactor / maxFreq) * h;
-                        if(i === 0) histCtx.moveTo(i, y);
-                        else histCtx.lineTo(i,y);
+                        const y = h - padding.bottom - (pdf * scalingFactor / maxFreq) * plotHeight;
+                        const x = padding.left + i;
+                        if(y < h && y > 0) {
+                             if(i === 0) histCtx.moveTo(x, y);
+                             else histCtx.lineTo(x,y);
+                        }
                     }
                     histCtx.stroke();
                 }
+
+                histCtx.strokeStyle = '#64748b'; histCtx.lineWidth = 1;
+                histCtx.beginPath();
+                histCtx.moveTo(padding.left, padding.top);
+                histCtx.lineTo(padding.left, h - padding.bottom);
+                histCtx.lineTo(w - padding.right, h - padding.bottom);
+                histCtx.stroke();
+
+                histCtx.fillStyle = '#94a3b8';
+                histCtx.font = '10px Inter';
+                histCtx.textAlign = 'center';
+                histCtx.fillText('Distancia r (µm)', padding.left + plotWidth / 2, h - 2);
+                
+                histCtx.textAlign = 'right';
+                histCtx.fillText(maxVal.toExponential(1), w - padding.right, h - padding.bottom + 10);
+                histCtx.fillText('0', padding.left - 5, h - padding.bottom);
+
+                histCtx.save();
+                histCtx.translate(12, padding.top + plotHeight / 2);
+                histCtx.rotate(-Math.PI / 2);
+                histCtx.textAlign = 'center';
+                histCtx.fillText('Frecuencia', 0, 0);
+                histCtx.restore();
             }
 
             // --- UI, Loop, and Export ---
@@ -616,6 +668,7 @@
                 state.isPlaying = !state.isPlaying;
                 dom.playPauseBtn.textContent = state.isPlaying ? 'Pausa' : 'Play';
                 dom.stepBtn.disabled = state.isPlaying;
+                setSlidersDisabled(state.isPlaying);
             }
 
             function exportData() {

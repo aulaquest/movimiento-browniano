@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Movimiento Browniano</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          displayMath: [['$$', '$$'], ['\\[', '\\]']]
+        }
+      };
+    </script>
+    <script async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #020617;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .control-panel {
+            background-color: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(8px);
+        }
+        .control-panel::-webkit-scrollbar { width: 6px; }
+        .control-panel::-webkit-scrollbar-track { background: transparent; }
+        .control-panel::-webkit-scrollbar-thumb { background: #4f46e5; border-radius: 3px; }
+        
+        .radio-label { position: relative; cursor: pointer; user-select: none; padding-left: 25px; display: inline-flex; align-items: center; height: 24px;}
+        .radio-label input { position: absolute; opacity: 0; cursor: pointer; }
+        .radio-dot { position: absolute; top: 2px; left: 0; height: 20px; width: 20px; background-color: #334155; border: 1px solid #475569; border-radius: 50%; transition: background-color 0.2s; }
+        .radio-label:hover input ~ .radio-dot { background-color: #475569; }
+        .radio-label input:checked ~ .radio-dot { background-color: #4f46e5; border-color: #4f46e5; }
+        .radio-dot:after { content: ""; position: absolute; display: none; top: 5px; left: 5px; width: 10px; height: 10px; border-radius: 50%; background: white; }
+        .radio-label input:checked ~ .radio-dot:after { display: block; }
+        
+        .checkbox-label { position: relative; cursor: pointer; user-select: none; padding-left: 30px; }
+        .checkbox-label input { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
+        .checkmark { position: absolute; top: 2px; left: 0; height: 20px; width: 20px; background-color: #334155; border: 1px solid #475569; border-radius: 4px; transition: background-color 0.2s; }
+        .checkbox-label:hover input ~ .checkmark { background-color: #475569; }
+        .checkbox-label input:checked ~ .checkmark { background-color: #4f46e5; }
+        .checkmark:after { content: ""; position: absolute; display: none; left: 6px; top: 2px; width: 5px; height: 10px; border: solid white; border-width: 0 3px 3px 0; transform: rotate(45deg); }
+        .checkbox-label input:checked ~ .checkmark:after { display: block; }
+
+        #popup-overlay { transition: opacity 0.3s; }
+        #popup-box { transition: opacity 0.3s, transform 0.3s; max-height: 80vh; overflow-y: auto; }
+        #popup-box::-webkit-scrollbar { width: 6px; }
+        #popup-box::-webkit-scrollbar-track { background: #1e293b; }
+        #popup-box::-webkit-scrollbar-thumb { background: #4f46e5; border-radius: 3px; }
+        #popup-box.hidden { transform: translate(-50%, -50%) scale(0.95); }
+
+        input[type="range"] {
+            -webkit-appearance: none; appearance: none;
+            width: 100%; height: 8px;
+            background: #334155; border-radius: 5px; outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 20px; height: 20px;
+            background: #a5b4fc; cursor: pointer; border-radius: 50%;
+            border: 2px solid #4f46e5;
+        }
+        .tab-button { transition: background-color 0.2s, color 0.2s; }
+        .tab-button.active { background-color: #4f46e5; color: #e2e8f0; }
+    </style>
+</head>
+<body class="text-gray-300 flex flex-col md:flex-row">
+
+    <!-- Columna de Simulación -->
+    <div class="w-full md:w-[60%] flex flex-col p-4">
+        <div id="info-hud" class="w-full max-w-4xl mx-auto bg-slate-900/70 backdrop-blur-sm p-3 rounded-lg z-20 border border-slate-700 shadow-lg mb-4 grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+            <div class="flex flex-col items-center gap-1 text-xs">
+                <span class="font-bold text-base text-sky-400">MSD</span>
+                <span id="msd-hud" class="font-mono text-white">0.00e+0 µm²</span>
+            </div>
+             <div class="flex flex-col items-center gap-1 text-xs">
+                <span class="font-bold text-base text-green-400">D (exp)</span>
+                <span id="d-exp-hud" class="font-mono text-white">0.00e+0 m²/s</span>
+            </div>
+            <div class="flex flex-col items-center gap-1 text-xs">
+                <span class="font-bold text-base text-indigo-400">D (teórico)</span>
+                <span id="d-theory-hud" class="font-mono text-white">0.00e+0 m²/s</span>
+            </div>
+            <div class="flex flex-col items-center gap-1 text-xs">
+                <span class="font-bold text-base text-rose-400">Error</span>
+                <span id="error-hud" class="font-mono text-white">0.00 %</span>
+            </div>
+        </div>
+        <div id="simulation-wrapper" class="relative flex-grow flex flex-col items-center justify-center w-full max-w-4xl mx-auto">
+            <canvas id="simulation-canvas" class="w-full rounded-lg bg-slate-800/20 border border-slate-700 cursor-pointer"></canvas>
+        </div>
+        <div id="graph-panel" class="w-full max-w-4xl mx-auto mt-4 grid md:grid-cols-2 gap-4">
+            <div id="msd-graph-container" class="bg-slate-900/70 p-3 rounded-lg z-20 border border-slate-700 shadow-lg">
+                <h4 class="text-sm font-bold text-sky-400 mb-2">MSD vs. Tiempo</h4>
+                <canvas id="graph-canvas" class="w-full h-48 rounded bg-slate-800/20"></canvas>
+            </div>
+            <div id="histogram-container" class="bg-slate-900/70 p-3 rounded-lg z-20 border border-slate-700 shadow-lg">
+                <h4 class="text-sm font-bold text-green-400 mb-2">Distribución de Distancias ($r$)</h4>
+                <canvas id="histogram-canvas" class="w-full h-48 rounded bg-slate-800/20"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Popup de Información -->
+    <div id="popup-overlay" class="fixed inset-0 bg-black/50 z-40 hidden opacity-0"></div>
+    <div id="popup-box" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-800 border border-slate-600 rounded-lg p-6 z-50 hidden opacity-0 w-full max-w-3xl text-gray-300">
+        <div class="flex border-b border-slate-600 mb-4">
+            <button data-tab="guide" class="tab-button active font-semibold py-2 px-4 rounded-t-md text-sm">Guía Rápida</button>
+            <button data-tab="tech" class="tab-button font-semibold py-2 px-4 rounded-t-md text-sm">Nota Técnica</button>
+            <button data-tab="activities" class="tab-button font-semibold py-2 px-4 rounded-t-md text-sm">Actividades</button>
+        </div>
+        <div id="popup-content" class="text-sm space-y-4"></div>
+        <button id="popup-close" class="absolute top-3 right-3 text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+    </div>
+
+    <!-- Panel de Controles -->
+    <div class="w-full md:w-[40%] control-panel p-5 z-10 border-t md:border-t-0 md:border-l border-slate-800 md:h-screen md:sticky md:top-0 md:overflow-y-auto flex flex-col">
+        <div class="flex justify-start gap-2 pb-4 border-b border-slate-700 mb-4">
+            <button id="info-btn" class="px-4 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs rounded-md transition flex-grow">Info y Guía</button>
+            <button id="reset-btn" class="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold text-xs rounded-md transition flex-grow">Reiniciar Simulación</button>
+        </div>
+        <div class="space-y-4 flex-grow w-full">
+            <div class="bg-slate-800/50 p-3 rounded-lg space-y-3">
+                <h3 class="text-sm font-bold text-sky-400 mb-2">Control de Tiempo</h3>
+                <p class="text-2xl text-center font-mono font-semibold text-cyan-400" id="time-display">0.00 s</p>
+                <div class="flex items-center justify-center gap-3">
+                    <button id="play-pause-btn" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-md transition w-24">Play</button>
+                    <button id="step-btn" class="px-4 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs rounded-md transition">Paso</button>
+                    <button id="time-reset-btn" class="px-4 py-1.5 bg-slate-600 hover:bg-slate-700 text-white font-semibold text-xs rounded-md transition">Reiniciar</button>
+                </div>
+                 <div class="flex items-center gap-2 text-xs text-gray-400 pt-2">
+                    <span>Lento</span>
+                    <input type="range" id="time-scale-slider" min="0.05" max="3" step="0.05" value="1" class="w-full">
+                    <span>Rápido</span>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/50 p-3 rounded-lg space-y-3">
+                <h3 class="text-sm font-bold text-sky-400 mb-2">Parámetros Físicos</h3>
+                <div><label for="n-slider" class="text-xs text-gray-400">Nº de Partículas (N): <span id="n-label" class="font-bold text-white">50</span></label><input type="range" id="n-slider" min="1" max="200" step="1" value="50"></div>
+                <div><label for="temp-slider" class="text-xs text-gray-400">Temperatura (T): <span id="temp-label" class="font-bold text-white">293</span> K</label><input type="range" id="temp-slider" min="273" max="373" step="1" value="293"></div>
+                <div><label for="eta-slider" class="text-xs text-gray-400">Viscosidad ($\eta$): <span id="eta-label" class="font-bold text-white">1.0e-3</span> Pa·s</label><input type="range" id="eta-slider" min="0.1" max="5" step="0.1" value="1.0"></div>
+                <div><label for="r-slider" class="text-xs text-gray-400">Radio Partícula (r): <span id="r-label" class="font-bold text-white">0.5</span> µm</label><input type="range" id="r-slider" min="0.1" max="2" step="0.05" value="0.5"></div>
+            </div>
+
+            <div class="bg-slate-800/50 p-3 rounded-lg space-y-3">
+                <h3 class="text-sm font-bold text-sky-400 mb-2">Visualización y Gráficos</h3>
+                <div class="grid grid-cols-1 gap-2">
+                    <label class="radio-label text-sm"><input type="radio" name="vis-mode" value="traces" checked><span>Normal</span><span class="radio-dot"></span></label>
+                    <label class="radio-label text-sm"><input type="radio" name="vis-mode" value="heatmap"><span>Mapa de Calor</span><span class="radio-dot"></span></label>
+                </div>
+                <label class="checkbox-label text-sm mt-2">
+                    <input type="checkbox" id="focus-particle-checkbox">
+                    <span class="checkmark"></span>
+                    Fijar vista y mostrar trayectoria
+                </label>
+                 <hr class="border-slate-700 my-1">
+                 <div class="mt-1">
+                    <label class="checkbox-label text-sm">
+                        <input type="checkbox" id="show-theoretical-msd-checkbox">
+                        <span class="checkmark"></span>
+                        Mostrar MSD teórico
+                    </label>
+                </div>
+                <div class="mt-2">
+                    <label class="checkbox-label text-sm">
+                        <input type="checkbox" id="show-rayleigh-checkbox">
+                        <span class="checkmark"></span>
+                        Mostrar curva de Rayleigh
+                    </label>
+                </div>
+            </div>
+            
+            <div class="bg-slate-800/50 p-3 rounded-lg space-y-3">
+                <h3 class="text-sm font-bold text-sky-400 mb-2">Condiciones de Frontera</h3>
+                 <div class="grid grid-cols-1 gap-2">
+                    <label class="radio-label text-sm"><input type="radio" name="boundary-type" value="reflexive" checked><span>Reflexiva</span><span class="radio-dot"></span></label>
+                    <label class="radio-label text-sm"><input type="radio" name="boundary-type" value="periodic"><span>Periódica</span><span class="radio-dot"></span></label>
+                    <label class="radio-label text-sm"><input type="radio" name="boundary-type" value="open"><span>Abierta</span><span class="radio-dot"></span></label>
+                </div>
+            </div>
+            
+            <div class="bg-slate-800/50 p-3 rounded-lg space-y-3">
+                 <h3 class="text-sm font-bold text-sky-400 mb-2">Campo Externo (Flujo)</h3>
+                 <div><label for="drift-x-slider" class="text-xs text-gray-400">Flujo X: <span id="drift-x-label" class="font-bold text-white">0</span> µm/s</label><input type="range" id="drift-x-slider" min="-100" max="100" step="1" value="0"></div>
+                 <div><label for="drift-y-slider" class="text-xs text-gray-400">Flujo Y: <span id="drift-y-label" class="font-bold text-white">0</span> µm/s</label><input type="range" id="drift-y-slider" min="-100" max="100" step="1" value="0"></div>
+            </div>
+            
+             <div class="bg-slate-800/50 p-3 rounded-lg space-y-3">
+                <h3 class="text-sm font-bold text-sky-400 mb-2">Exportar</h3>
+                <div class="flex flex-col gap-2">
+                    <button id="export-csv-btn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm">Exportar Datos MSD (CSV)</button>
+                    <button id="export-png-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-all text-sm">Exportar Gráficos (PNG)</button>
+                </div>
+            </div>
+
+        </div>
+        <footer class="p-2 text-center text-xs text-gray-500 z-20 mt-auto pt-4">Simulación creada por <a href="https://aulaquest.com" target="_blank" rel="noopener noreferrer" class="underline hover:text-indigo-400">Aulaquest</a></footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- DOM Elements ---
+            const dom = {
+                canvas: document.getElementById('simulation-canvas'),
+                simulationWrapper: document.getElementById('simulation-wrapper'),
+                timeDisplay: document.getElementById('time-display'),
+                playPauseBtn: document.getElementById('play-pause-btn'),
+                stepBtn: document.getElementById('step-btn'),
+                timeResetBtn: document.getElementById('time-reset-btn'),
+                timeScaleSlider: document.getElementById('time-scale-slider'),
+                infoBtn: document.getElementById('info-btn'),
+                resetBtn: document.getElementById('reset-btn'),
+                popupOverlay: document.getElementById('popup-overlay'),
+                popupBox: document.getElementById('popup-box'),
+                popupClose: document.getElementById('popup-close'),
+                popupContent: document.getElementById('popup-content'),
+                tabButtons: document.querySelectorAll('.tab-button'),
+                msdHud: document.getElementById('msd-hud'),
+                dExpHud: document.getElementById('d-exp-hud'),
+                dTheoryHud: document.getElementById('d-theory-hud'),
+                errorHud: document.getElementById('error-hud'),
+                nSlider: document.getElementById('n-slider'),
+                nLabel: document.getElementById('n-label'),
+                tempSlider: document.getElementById('temp-slider'),
+                tempLabel: document.getElementById('temp-label'),
+                etaSlider: document.getElementById('eta-slider'),
+                etaLabel: document.getElementById('eta-label'),
+                rSlider: document.getElementById('r-slider'),
+                rLabel: document.getElementById('r-label'),
+                graphCanvas: document.getElementById('graph-canvas'),
+                histogramCanvas: document.getElementById('histogram-canvas'),
+                visModeRadios: document.querySelectorAll('input[name="vis-mode"]'),
+                boundaryTypeRadios: document.querySelectorAll('input[name="boundary-type"]'),
+                focusParticleCheckbox: document.getElementById('focus-particle-checkbox'),
+                showTheoreticalMsdCheckbox: document.getElementById('show-theoretical-msd-checkbox'),
+                showRayleighCheckbox: document.getElementById('show-rayleigh-checkbox'),
+                driftXSlider: document.getElementById('drift-x-slider'),
+                driftXLabel: document.getElementById('drift-x-label'),
+                driftYSlider: document.getElementById('drift-y-slider'),
+                driftYLabel: document.getElementById('drift-y-label'),
+                exportCsvBtn: document.getElementById('export-csv-btn'),
+                exportPngBtn: document.getElementById('export-png-btn'),
+            };
+
+            const ctx = dom.canvas.getContext('2d');
+            const graphCtx = dom.graphCanvas.getContext('2d');
+            const histCtx = dom.histogramCanvas.getContext('2d');
+            let animationFrameId;
+
+            // --- Constants ---
+            const KB = 1.380649e-23;
+            const MAGNIFICATION = 50;
+
+            // --- State ---
+            const defaultState = {
+                N: 50, T: 293, eta: 1.0e-3, r: 0.5e-6,
+                timeScale: 1.0, visualizationMode: 'traces', boundaryType: 'reflexive',
+                driftX: 0, driftY: 0, focusEnabled: false,
+                showTheoreticalMsd: false, showRayleigh: false,
+            };
+
+            let state = {
+                ...JSON.parse(JSON.stringify(defaultState)),
+                isPlaying: false, time: 0, dt: 1 / 60,
+                particles: [], msdData: [], radialDisplacements: [],
+                focusedParticleIndex: -1,
+            };
+
+            // --- Physics & Simulation Logic ---
+            function resetSimulation() {
+                if (state.isPlaying) togglePlayPause();
+                state = { ...state, isPlaying: false, time: 0, particles: [], msdData: [], radialDisplacements: [],
+                    focusedParticleIndex: state.focusEnabled && state.N > 0 ? 0 : -1,
+                };
+                for (let i = 0; i < state.N; i++) {
+                    const x = dom.canvas.width * (0.1 + Math.random() * 0.8);
+                    const y = dom.canvas.height * (0.1 + Math.random() * 0.8);
+                    state.particles.push({ x, y, x0: x, y0: y, path: [{t: 0, x, y}], color: `hsl(${i * (360 / state.N)}, 80%, 60%)` });
+                }
+                updateUI();
+                draw();
+                drawGraph();
+                drawHistogram();
+            }
+
+            function fullReset() {
+                 state = { ...state, ...JSON.parse(JSON.stringify(defaultState)) };
+                dom.nSlider.value = defaultState.N;
+                dom.tempSlider.value = defaultState.T;
+                dom.etaSlider.value = defaultState.eta * 1e3;
+                dom.rSlider.value = defaultState.r * 1e6;
+                dom.timeScaleSlider.value = defaultState.timeScale;
+                dom.driftXSlider.value = defaultState.driftX;
+                dom.driftYSlider.value = defaultState.driftY;
+                document.querySelector('input[name="vis-mode"][value="traces"]').checked = true;
+                document.querySelector('input[name="boundary-type"][value="reflexive"]').checked = true;
+                dom.focusParticleCheckbox.checked = false;
+                dom.showTheoreticalMsdCheckbox.checked = false;
+                dom.showRayleighCheckbox.checked = false;
+                updateLabels();
+                resetSimulation();
+            }
+            
+            function boxMullerTransform() {
+                let u1 = 0, u2 = 0;
+                while(u1 === 0) u1 = Math.random();
+                while(u2 === 0) u2 = Math.random();
+                return { z1: Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2),
+                         z2: Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2) };
+            }
+
+            function updatePhysics() {
+                const D = calculateTheoreticalD();
+                const sigma = Math.sqrt(2 * D * state.dt * state.timeScale);
+                const meterToPixelScale = 1e6 * MAGNIFICATION;
+
+                for (let i = 0; i < state.particles.length; i++) {
+                    const p = state.particles[i];
+                    const { z1, z2 } = boxMullerTransform();
+                    const brownianDx = z1 * sigma;
+                    const brownianDy = z2 * sigma;
+                    
+                    const driftDx = state.driftX * 1e-6 * state.dt * state.timeScale;
+                    const driftDy = state.driftY * 1e-6 * state.dt * state.timeScale;
+                    
+                    const totalDx_meters = brownianDx + driftDx;
+                    const totalDy_meters = brownianDy + driftDy;
+
+                    p.x += totalDx_meters * meterToPixelScale;
+                    p.y += totalDy_meters * meterToPixelScale;
+                    
+                    const radial_dist_um = Math.hypot(totalDx_meters, totalDy_meters) * 1e6;
+                    state.radialDisplacements.push(radial_dist_um);
+
+                    applyBoundaryConditions(p);
+                    
+                    if (state.focusEnabled && i === state.focusedParticleIndex) {
+                        p.path.push({ t: state.time, x: p.x, y: p.y });
+                        if (p.path.length > 1000) p.path.shift();
+                    } else {
+                        p.path = [{t: p.path[0].t, x: p.x, y: p.y}];
+                    }
+                }
+                if(state.radialDisplacements.length > 2000) {
+                    state.radialDisplacements.splice(0, state.radialDisplacements.length - 2000);
+                }
+            }
+            
+            function applyBoundaryConditions(p) {
+                const w = dom.canvas.width, h = dom.canvas.height;
+                if (state.boundaryType === 'reflexive') {
+                    if (p.x < 0) p.x = 0; if (p.x > w) p.x = w;
+                    if (p.y < 0) p.y = 0; if (p.y > h) p.y = h;
+                } else if (state.boundaryType === 'periodic') {
+                    if (p.x < 0) p.x += w; if (p.x > w) p.x -= w;
+                    if (p.y < 0) p.y += h; if (p.y > h) p.y -= h;
+                }
+            }
+
+            function calculateMSD() {
+                if (state.particles.length === 0) return 0;
+                let totalSqDisp = state.particles.reduce((sum, p) => {
+                    const dx_um = (p.x - p.x0) / MAGNIFICATION;
+                    const dy_um = (p.y - p.y0) / MAGNIFICATION;
+                    return sum + dx_um * dx_um + dy_um * dy_um;
+                }, 0);
+                const msd = totalSqDisp / state.particles.length;
+                state.msdData.push({ time: state.time, msd: msd });
+                if (state.msdData.length > 500) state.msdData.shift();
+                return msd;
+            }
+
+            function calculateTheoreticalD() {
+                return (KB * state.T) / (6 * Math.PI * state.eta * state.r);
+            }
+
+            function estimateExperimentalD() {
+                if (state.msdData.length < 20) return 0;
+                const n = state.msdData.length;
+                let sum_x = 0, sum_y = 0, sum_xy = 0, sum_xx = 0;
+                state.msdData.forEach(p => { sum_x += p.time; sum_y += p.msd; sum_xy += p.time * p.msd; sum_xx += p.time * p.time; });
+                const slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x);
+                return (isNaN(slope) || slope < 0) ? 0 : (slope / 4) * 1e-12;
+            }
+
+            // --- Drawing ---
+            function draw() {
+                ctx.clearRect(0, 0, dom.canvas.width, dom.canvas.height);
+                if (state.visualizationMode === 'traces') drawTraces(); else drawHeatmap();
+            }
+            
+            function drawTraces() {
+                const baseRadius = 1.5;
+                const visualRadiusScale = 3; 
+
+                for (let i = 0; i < state.particles.length; i++) {
+                    const p = state.particles[i];
+                    const particleRadius = baseRadius + (state.r * 1e6) * visualRadiusScale;
+                    const currentRadius = (state.focusEnabled && i === state.focusedParticleIndex) ? Math.max(4, particleRadius) : particleRadius;
+                    
+                    ctx.globalAlpha = (state.focusedParticleIndex !== -1 && i !== state.focusedParticleIndex) ? 0.05 : 1.0;
+                    
+                    if (state.focusEnabled && i === state.focusedParticleIndex && p.path.length > 1) {
+                        ctx.beginPath();
+                        ctx.moveTo(p.path[0].x, p.path[0].y);
+                        for (let j = 1; j < p.path.length; j++) ctx.lineTo(p.path[j].x, p.path[j].y);
+                        ctx.strokeStyle = p.color;
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+                    }
+
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, currentRadius, 0, 2 * Math.PI);
+                    ctx.fillStyle = p.color;
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1.0;
+            }
+            
+            function drawHeatmap() {
+                const res = 20, gridW = Math.ceil(dom.canvas.width / res), gridH = Math.ceil(dom.canvas.height / res);
+                const grid = Array(gridW).fill(0).map(() => Array(gridH).fill(0));
+                let maxCount = 0;
+                state.particles.forEach(p => {
+                    const gx = Math.floor(p.x / res), gy = Math.floor(p.y / res);
+                    if (gx >= 0 && gx < gridW && gy >= 0 && gy < gridH) {
+                        grid[gx][gy]++;
+                        if (grid[gx][gy] > maxCount) maxCount = grid[gx][gy];
+                    }
+                });
+                if (maxCount === 0) return;
+                for (let i = 0; i < gridW; i++) for (let j = 0; j < gridH; j++) {
+                    if (grid[i][j] > 0) {
+                        const hue = (1 - (grid[i][j] / maxCount)) * 240;
+                        ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.6)`;
+                        ctx.fillRect(i * res, j * res, res, res);
+                    }
+                }
+            }
+            
+            function drawGraph() {
+                graphCtx.clearRect(0, 0, dom.graphCanvas.width, dom.graphCanvas.height);
+                const w = dom.graphCanvas.width, h = dom.graphCanvas.height;
+                const padding = { top: 10, bottom: 25, left: 60, right: 10 };
+                const plotWidth = w - padding.left - padding.right, plotHeight = h - padding.top - padding.bottom;
+                
+                const experimentalMaxMSD = state.msdData.length > 1 ? Math.max(...state.msdData.map(d => d.msd)) : 1;
+                const D_theory = calculateTheoreticalD();
+                const maxTime = state.msdData.length > 1 ? state.msdData[state.msdData.length - 1].time : 1;
+                const theoreticalMaxMSD = 4 * D_theory * maxTime * 1e12;
+                const maxMSD = Math.max(1, experimentalMaxMSD, state.showTheoreticalMsd ? theoreticalMaxMSD : 0);
+
+                const minTime = state.msdData.length > 1 ? state.msdData[0].time : 0;
+                const timeRange = maxTime - minTime || 1;
+                
+                graphCtx.strokeStyle = '#334155';
+                graphCtx.lineWidth = 0.5;
+                graphCtx.fillStyle = '#94a3b8'; 
+                graphCtx.font = '10px Inter';
+
+                for (let i = 1; i <= 4; i++) {
+                    const y = h - padding.bottom - (i / 4) * plotHeight;
+                    graphCtx.beginPath();
+                    graphCtx.moveTo(padding.left, y);
+                    graphCtx.lineTo(w - padding.right, y);
+                    graphCtx.stroke();
+                    graphCtx.textAlign = 'right';
+                    graphCtx.fillText((maxMSD * i / 4).toExponential(1), padding.left - 5, y + 3);
+
+                    const x = padding.left + (i / 4) * plotWidth;
+                    graphCtx.beginPath();
+                    graphCtx.moveTo(x, padding.top);
+                    graphCtx.lineTo(x, h - padding.bottom);
+                    graphCtx.stroke();
+                    graphCtx.textAlign = 'center';
+                    graphCtx.fillText((minTime + timeRange * i / 4).toFixed(1), x, h - padding.bottom + 15);
+                }
+
+                const scaleX = plotWidth / timeRange, scaleY = plotHeight / maxMSD;
+
+                if (state.msdData.length >= 2) {
+                    graphCtx.strokeStyle = '#60a5fa'; graphCtx.lineWidth = 2;
+                    graphCtx.beginPath();
+                    state.msdData.forEach((p, i) => {
+                        const x = padding.left + (p.time - minTime) * scaleX, y = h - padding.bottom - p.msd * scaleY;
+                        if (i === 0) graphCtx.moveTo(x, y); else graphCtx.lineTo(x, y);
+                    });
+                    graphCtx.stroke();
+                }
+
+                if (state.showTheoreticalMsd) {
+                    graphCtx.strokeStyle = '#f43f5e'; graphCtx.lineWidth = 2;
+                    graphCtx.setLineDash([5, 5]);
+                    graphCtx.beginPath();
+                    const startX = padding.left, startY = h - padding.bottom;
+                    const endX = padding.left + plotWidth;
+                    const endY = h - padding.bottom - (4 * D_theory * maxTime * 1e12) * scaleY;
+                    graphCtx.moveTo(startX, startY);
+                    graphCtx.lineTo(endX, endY);
+                    graphCtx.stroke();
+                    graphCtx.setLineDash([]);
+                }
+                
+                graphCtx.strokeStyle = '#64748b'; graphCtx.lineWidth = 1;
+                graphCtx.beginPath(); graphCtx.moveTo(padding.left, padding.top); graphCtx.lineTo(padding.left, h - padding.bottom); graphCtx.lineTo(w - padding.right, h - padding.bottom); graphCtx.stroke();
+                
+                graphCtx.textAlign = 'right';
+                graphCtx.fillText('0', padding.left - 5, h - padding.bottom);
+                graphCtx.textAlign = 'center';
+                graphCtx.fillText('Tiempo (s)', w/2, h - 2);
+            }
+
+            function drawHistogram() {
+                histCtx.clearRect(0, 0, dom.histogramCanvas.width, dom.histogramCanvas.height);
+                const data = state.radialDisplacements;
+                if(data.length < 10) return;
+                const numBins = 30;
+                let maxVal = 0;
+                data.forEach(v => { maxVal = Math.max(maxVal, v); });
+                if(maxVal === 0) return;
+
+                const binWidth = maxVal / numBins;
+                const bins = Array(numBins).fill(0);
+                data.forEach(val => {
+                    const binIndex = Math.min(numBins - 1, Math.floor(val / binWidth));
+                    bins[binIndex]++;
+                });
+                const maxFreq = Math.max(1, ...bins);
+                const w = dom.histogramCanvas.width, h = dom.histogramCanvas.height;
+                const barWidth = w / numBins;
+
+                bins.forEach((freq, i) => {
+                    const barHeight = (freq / maxFreq) * h;
+                    histCtx.fillStyle = '#22c55e';
+                    histCtx.fillRect(i * barWidth, h - barHeight, barWidth - 1, barHeight);
+                });
+
+                if (state.showRayleigh) {
+                    const D = calculateTheoreticalD();
+                    const sigma_sq = 2 * D * state.dt * state.timeScale * 1e12; // in um^2
+                    const scalingFactor = data.length * binWidth;
+                    
+                    histCtx.strokeStyle = '#f43f5e'; histCtx.lineWidth = 2;
+                    histCtx.beginPath();
+                    for(let i=0; i < w; i++) {
+                        const r = (i / w) * maxVal; // r in um
+                        const pdf = (r / sigma_sq) * Math.exp(-r*r / (2*sigma_sq));
+                        const y = h - (pdf * scalingFactor / maxFreq) * h;
+                        if(i === 0) histCtx.moveTo(i, y);
+                        else histCtx.lineTo(i,y);
+                    }
+                    histCtx.stroke();
+                }
+            }
+
+            // --- UI, Loop, and Export ---
+            function updateUI() {
+                dom.timeDisplay.textContent = state.time.toFixed(2) + ' s';
+                const msd = state.msdData.length > 0 ? state.msdData.slice(-1)[0].msd : 0;
+                dom.msdHud.textContent = `${msd.toExponential(2)} µm²`;
+                const d_theory = calculateTheoreticalD();
+                dom.dTheoryHud.textContent = `${d_theory.toExponential(2)} m²/s`;
+                const d_exp = estimateExperimentalD();
+                dom.dExpHud.textContent = `${d_exp.toExponential(2)} m²/s`;
+                const error = d_theory > 0 ? Math.abs((d_exp - d_theory) / d_theory) * 100 : 0;
+                dom.errorHud.textContent = `${error.toFixed(2)} %`;
+            }
+
+            function updateLabels() {
+                 dom.nLabel.textContent = state.N; dom.tempLabel.textContent = state.T;
+                 dom.etaLabel.textContent = state.eta.toExponential(1); dom.rLabel.textContent = (state.r * 1e6).toFixed(2);
+                 dom.driftXLabel.textContent = `${state.driftX} µm/s`; dom.driftYLabel.textContent = `${state.driftY} µm/s`;
+            }
+            
+            function stepOnce() {
+                state.time += state.dt * state.timeScale;
+                updatePhysics(); calculateMSD(); updateUI();
+            }
+
+            function gameLoop() {
+                if (state.isPlaying) stepOnce();
+                draw(); drawGraph(); drawHistogram();
+                animationFrameId = requestAnimationFrame(gameLoop);
+            }
+
+            function togglePlayPause() {
+                state.isPlaying = !state.isPlaying;
+                dom.playPauseBtn.textContent = state.isPlaying ? 'Pausa' : 'Play';
+                dom.stepBtn.disabled = state.isPlaying;
+            }
+
+            function resizeCanvas() {
+                const newWidth = dom.simulationWrapper.clientWidth;
+                dom.canvas.width = newWidth; dom.canvas.height = newWidth / 1.6;
+                dom.graphCanvas.width = dom.graphCanvas.clientWidth; dom.graphCanvas.height = dom.graphCanvas.clientHeight;
+                dom.histogramCanvas.width = dom.histogramCanvas.clientWidth; dom.histogramCanvas.height = dom.histogramCanvas.clientHeight;
+                resetSimulation();
+            }
+
+            function exportData() {
+                if (state.focusEnabled && state.focusedParticleIndex !== -1 && state.particles[state.focusedParticleIndex].path.length > 1) {
+                    const particle = state.particles[state.focusedParticleIndex];
+                    let csvContent = "data:text/csv;charset=utf-8,Tiempo (s),x (px),y (px)\n";
+                    csvContent += particle.path.map(p => `${p.t.toFixed(4)},${p.x.toFixed(2)},${p.y.toFixed(2)}`).join("\n");
+                    triggerDownload(csvContent, `trayectoria_particula_${state.focusedParticleIndex}.csv`);
+                } else {
+                    if(state.msdData.length === 0) return;
+                    let csvContent = "data:text/csv;charset=utf-8,Tiempo (s),MSD (um^2)\n";
+                    csvContent += state.msdData.map(p => `${p.time.toFixed(4)},${p.msd.toExponential(4)}`).join("\n");
+                    triggerDownload(csvContent, "datos_msd_browniano.csv");
+                }
+            }
+            
+            function triggerDownload(content, fileName) {
+                 const encodedUri = encodeURI(content);
+                 const link = document.createElement("a");
+                 link.setAttribute("href", encodedUri);
+                 link.setAttribute("download", fileName);
+                 document.body.appendChild(link);
+                 link.click();
+                 document.body.removeChild(link);
+            }
+
+            function exportGraphsToPng() {
+                const tempCanvas = document.createElement('canvas');
+                const w = dom.graphCanvas.width, h1 = dom.graphCanvas.height, h2 = dom.histogramCanvas.height;
+                const totalHeight = Math.max(h1,h2)
+                tempCanvas.width = w * 2; tempCanvas.height = totalHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.fillStyle = '#0f172a';
+                tempCtx.fillRect(0,0,w*2,totalHeight);
+                tempCtx.drawImage(dom.graphCanvas, 0, 0);
+                tempCtx.drawImage(dom.histogramCanvas, w, 0);
+                const link = document.createElement('a');
+                link.download = 'graficos_browniano.png';
+                link.href = tempCanvas.toDataURL();
+                link.click();
+            }
+
+            // --- Popup Logic ---
+            const popupContents = {
+                guide: `
+                    <h5 class="font-bold text-sky-400">¿Qué es esto?</h5>
+                    <p>Estás viendo una simulación del <strong>movimiento browniano</strong>: el baile aleatorio de partículas pequeñas en un fluido, causado por los choques con las moléculas invisibles del entorno.</p>
+                    <h5 class="font-bold mt-4 text-sky-400">¿Cómo se usa?</h5>
+                    <ul class="list-disc list-inside space-y-2 mt-2">
+                        <li><strong>Controles de Tiempo:</strong> Usa 'Play/Pausa' para controlar la simulación. El botón <strong>'Paso'</strong> (solo funciona en pausa) avanza la simulación un único instante de tiempo. ¡Fíjate en el contador de tiempo y en el pequeño salto de las partículas!</li>
+                        <li><strong>Juega con los parámetros:</strong> Cambia la temperatura, el tamaño de la partícula o la viscosidad y observa cómo cambia el movimiento.</li>
+                        <li><strong>Sigue a una partícula:</strong> Activa "Fijar vista" y haz clic en una partícula para seguir su trayectoria errática. Las demás se atenuarán.</li>
+                        <li><strong>Analiza los gráficos:</strong> La gráfica de MSD muestra cómo se alejan las partículas de su origen. El histograma muestra la distribución de sus "saltos".</li>
+                        <li><strong>Exporta tus resultados:</strong> Usa los botones de exportar para guardar los datos en formato CSV o los gráficos como una imagen PNG.</li>
+                    </ul>`,
+                tech: `
+                    <h5 class="font-bold text-sky-400">Desplazamiento Cuadrático Medio (MSD)</h5>
+                    <p>El MSD (Mean Squared Displacement) es una medida de cuánto, en promedio, se ha alejado una partícula de su punto de partida. Si una partícula se mueve de $\\vec{r}_0$ a $\\vec{r}(t)$ en un tiempo $t$, su desplazamiento al cuadrado es $|\\vec{r}(t) - \\vec{r}_0|^2$. El MSD es el promedio de esta cantidad sobre muchas partículas. En 2D, la teoría predice una relación lineal con el tiempo: $$\\langle |\\vec{r}(t) - \\vec{r}_0|^2 \\rangle = 4Dt$$ El simulador estima $D_{exp}$ calculando la pendiente de esta gráfica.</p>
+                     <h5 class="font-bold mt-4 text-sky-400">Ecuación de Stokes-Einstein</h5>
+                    <p>El coeficiente de difusión teórico, $D_{teórico}$, se calcula con esta famosa ecuación:</p>
+                    $$D = \\frac{k_B T}{6 \\pi \\eta r}$$
+                    <ul class="list-disc list-inside space-y-1 mt-2">
+                        <li>$k_B$: Es la <strong>Constante de Boltzmann</strong> ($1.38 \\times 10^{-23}$ J/K), un factor que relaciona la temperatura con la energía.</li>
+                        <li>$T$: Es la <strong>Temperatura absoluta</strong> en Kelvin. Mide la energía cinética media de las moléculas del fluido. A mayor T, más energéticos son los choques y más rápido el movimiento.</li>
+                        <li>$\\eta$: Es la <strong>Viscosidad</strong> del fluido. Mide la "resistencia a fluir" o fricción interna. Un fluido muy viscoso (como la miel) frena más a las partículas que uno poco viscoso (como el agua).</li>
+                        <li>$r$: Es el <strong>Radio</strong> de la partícula browniana. Las partículas más grandes son más "difíciles de mover" por los choques y, por tanto, se difunden más lentamente.</li>
+                    </ul>
+                     <h5 class="font-bold mt-4 text-sky-400">Análisis de Gráficas</h5>
+                    <ul class="list-disc list-inside space-y-2 mt-2">
+                        <li><strong>MSD Teórico:</strong> La línea roja discontinua que puedes superponer en la gráfica de MSD representa la predicción ideal $MSD(t) = 4Dt$. Es la trayectoria promedio que seguirían las partículas en un espacio infinito y sin ruido estadístico. Compararla con la curva azul experimental te permite ver qué tan bien se ajusta tu simulación al modelo.</li>
+                        <li><strong>Curva de Rayleigh:</strong> La curva roja en el histograma es la Distribución de Rayleigh teórica. Predice cómo se distribuyen las longitudes de los 'pasos' aleatorios ($r = \\sqrt{\\Delta x^2 + \\Delta y^2}$). Si los desplazamientos en X e Y son gaussianos e independientes (como en nuestro modelo), la distancia radial seguirá esta distribución. Es una forma de verificar que el 'motor' aleatorio de la simulación funciona correctamente.</li>
+                    </ul>
+                     <h5 class="font-bold mt-4 text-sky-400">Flujo Externo y Fronteras</h5>
+                     <p>El <strong>flujo externo</strong> simula una corriente o una fuerza constante (como la gravedad si la simulación fuera vertical), que arrastra a todas las partículas en una dirección preferente, superponiéndose a su movimiento aleatorio.</p>
+                     <p>Las <strong>condiciones de frontera</strong> definen qué pasa cuando una partícula llega al borde:</p>
+                     <ul class="list-disc list-inside space-y-1 mt-2">
+                        <li><strong>Reflexiva:</strong> Las partículas rebotan elásticamente.</li>
+                        <li><strong>Periódica:</strong> La partícula reaparece por el lado opuesto, como si el espacio se repitiera.</li>
+                        <li><strong>Abierta:</strong> Las partículas simplemente se escapan de la vista.</li>
+                    </ul>`,
+                activities: `
+                    <h5 class="font-bold text-sky-400">Nivel Bachillerato</h5>
+                    <ol class="list-decimal list-inside space-y-3 mt-2">
+                        <li><strong>Observación pura:</strong> Ejecuta la simulación con 1 partícula. Activa "Fijar vista" y observa su recorrido durante 60 segundos. ¿El movimiento parece seguir algún patrón o es completamente aleatorio? Exporta su trayectoria.</li>
+                        <li><strong>Medir D:</strong> Simula 100 partículas. Deja que el sistema evolucione y observa la gráfica MSD vs. tiempo. ¿Es una línea recta? Usa el valor $D_{exp}$ y compáralo con el $D_{teórico}$. Calcula el error.</li>
+                        <li><strong>Efecto de la Temperatura:</strong> Compara $D_{exp}$ para una temperatura baja (ej. 273 K) y una alta (ej. 373 K). ¿Coincide el cambio observado con la predicción de la fórmula de Stokes-Einstein?</li>
+                        <li><strong>Efecto del Tamaño:</strong> Compara el movimiento de partículas de $r=0.2 \\mu m$ con otras de $r=2.0 \\mu m$. ¿Cuál se mueve más erráticamente? ¿Cómo cambia el valor de $D$?</li>
+                    </ol>
+                    <h5 class="font-bold text-sky-400 mt-4">Nivel Avanzado</h5>
+                    <ol class="list-decimal list-inside space-y-3 mt-2">
+                        <li><strong>Fronteras:</strong> Compara una simulación con frontera reflexiva y otra con periódica. ¿Influye el tipo de frontera en el cálculo del MSD a corto plazo? ¿Y a largo plazo? ¿Por qué?</li>
+                        <li><strong>Distribución de Rayleigh:</strong> Deja correr la simulación un tiempo. El histograma de distancias, ¿se parece a la curva teórica de Rayleigh? ¿Por qué crees que los desplazamientos radiales siguen esta distribución?</li>
+                        <li><strong>Precisión Estadística vs. Efectos de Borde:</strong> Ejecuta una simulación con pocas partículas (ej. N=10) y activa 'Mostrar MSD teórico'. Observa cómo el ruido estadístico hace que la curva experimental se desvíe rápidamente. Repite con muchas partículas (ej. N=200). ¿La curva se ajusta mejor a la teoría? ¿En qué momento empieza a desviarse de nuevo y por qué? (Pista: las partículas empiezan a 'sentir' las paredes).</li>
+                        <li><strong>Reto - Estimar $k_B$:</strong> Diseña un experimento para estimar la constante de Boltzmann ($k_B$). Fija T, $\\eta$ y r a valores conocidos. Mide $D_{exp}$ con la mayor precisión posible (usando muchas partículas y un tiempo largo). Despeja $k_B$ de la ecuación de Stokes-Einstein y compara tu resultado con el valor real.</li>
+                    </ol>
+                    `
+            };
+            function showInfoPopup(initialTab = 'guide') {
+                dom.popupOverlay.classList.remove('hidden');
+                dom.popupBox.classList.remove('hidden');
+                switchTab(initialTab);
+                setTimeout(() => { dom.popupOverlay.classList.remove('opacity-0'); dom.popupBox.classList.remove('opacity-0'); }, 10);
+            }
+            function switchTab(tabId) {
+                dom.popupContent.innerHTML = popupContents[tabId];
+                dom.tabButtons.forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.tab === tabId);
+                });
+                if(window.MathJax) MathJax.typeset();
+            }
+
+            // --- Initializer ---
+            function init() {
+                window.addEventListener('resize', resizeCanvas);
+                dom.playPauseBtn.addEventListener('click', togglePlayPause);
+                dom.stepBtn.addEventListener('click', () => { if(!state.isPlaying) { stepOnce(); draw(); drawGraph(); drawHistogram(); } });
+                dom.resetBtn.addEventListener('click', fullReset);
+                dom.timeResetBtn.addEventListener('click', resetSimulation);
+                dom.infoBtn.addEventListener('click', () => showInfoPopup());
+                dom.popupClose.addEventListener('click', () => { dom.popupOverlay.classList.add('opacity-0'); dom.popupBox.classList.add('opacity-0'); setTimeout(() => { dom.popupOverlay.classList.add('hidden'); dom.popupBox.classList.add('hidden'); }, 300); });
+                dom.tabButtons.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+                dom.exportCsvBtn.addEventListener('click', exportData);
+                dom.exportPngBtn.addEventListener('click', exportGraphsToPng);
+                
+                const keyMap = { n: 'N', temp: 'T', eta: 'eta', r: 'r', driftX: 'driftX', driftY: 'driftY' };
+                Object.keys(keyMap).forEach(id => {
+                    const slider = dom[`${id}Slider`];
+                    slider.addEventListener('input', () => {
+                        let value = parseFloat(slider.value);
+                        if (id === 'eta') value *= 1e-3;
+                        if (id === 'r') value *= 1e-6;
+                        
+                        state[keyMap[id]] = value;
+                        updateLabels();
+                        if(id === 'n') resetSimulation();
+                    });
+                });
+                
+                dom.timeScaleSlider.addEventListener('input', (e) => state.timeScale = parseFloat(e.target.value));
+                dom.visModeRadios.forEach(r => r.addEventListener('change', (e) => { state.visualizationMode = e.target.value; if (e.target.value === 'heatmap') draw(); }));
+                dom.boundaryTypeRadios.forEach(r => r.addEventListener('change', (e) => state.boundaryType = e.target.value));
+                
+                dom.focusParticleCheckbox.addEventListener('change', (e) => {
+                    state.focusEnabled = e.target.checked;
+                    state.focusedParticleIndex = (state.focusEnabled && state.N > 0) ? 0 : -1;
+                    dom.exportCsvBtn.textContent = state.focusEnabled ? "Exportar Trayectoria (CSV)" : "Exportar Datos MSD (CSV)";
+                    if (!state.focusEnabled) state.particles.forEach(p => p.path = [{t:p.path[0].t, x: p.x, y: p.y}]);
+                });
+
+                dom.showTheoreticalMsdCheckbox.addEventListener('change', (e) => state.showTheoreticalMsd = e.target.checked);
+                dom.showRayleighCheckbox.addEventListener('change', (e) => state.showRayleigh = e.target.checked);
+                
+                dom.canvas.addEventListener('click', (e) => {
+                    if (!state.focusEnabled || state.particles.length === 0) return;
+                    const rect = dom.canvas.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
+                    let closestDist = Infinity, closestIndex = -1;
+                    state.particles.forEach((p, i) => {
+                        const dist = Math.hypot(p.x - mouseX, p.y - mouseY);
+                        if (dist < closestDist) { closestDist = dist; closestIndex = i; }
+                    });
+                    state.focusedParticleIndex = closestIndex;
+                });
+
+                resizeCanvas();
+                updateLabels();
+                gameLoop();
+            }
+            
+            init();
+        });
+    </script>
+</body>
+</html>

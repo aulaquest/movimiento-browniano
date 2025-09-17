@@ -73,7 +73,7 @@
 <body class="text-gray-300 flex flex-col md:flex-row">
 
     <!-- Columna de Simulación -->
-    <div class="w-full md:w-[60%] flex flex-col p-4">
+    <div class="w-full md:w-[70%] flex flex-col p-4">
         <div id="info-hud" class="w-full max-w-4xl mx-auto bg-slate-900/70 backdrop-blur-sm p-3 rounded-lg z-20 border border-slate-700 shadow-lg mb-4 grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
             <div class="flex flex-col items-center gap-1 text-xs">
                 <span class="font-bold text-base text-sky-400">MSD</span>
@@ -120,7 +120,7 @@
     </div>
 
     <!-- Panel de Controles -->
-    <div class="w-full md:w-[40%] control-panel p-5 z-10 border-t md:border-t-0 md:border-l border-slate-800 md:h-screen md:sticky md:top-0 md:overflow-y-auto flex flex-col">
+    <div class="w-full md:w-[30%] control-panel p-5 z-10 border-t md:border-t-0 md:border-l border-slate-800 md:h-screen md:sticky md:top-0 md:overflow-y-auto flex flex-col">
         <div class="flex justify-start gap-2 pb-4 border-b border-slate-700 mb-4">
             <button id="info-btn" class="px-4 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs rounded-md transition flex-grow">Info y Guía</button>
             <button id="reset-btn" class="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold text-xs rounded-md transition flex-grow">Reiniciar Simulación</button>
@@ -584,6 +584,28 @@
                 updatePhysics(); calculateMSD(); updateUI();
             }
 
+            let lastResizeWidth = 0;
+            let lastResizeHeight = 0;
+            function resizeCanvas() {
+                const newWidth = dom.simulationWrapper.clientWidth;
+                const newHeight = newWidth / 1.6;
+
+                if (Math.abs(newWidth - lastResizeWidth) < 15 && Math.abs(newHeight - lastResizeHeight) < 15) {
+                    return; 
+                }
+                
+                lastResizeWidth = newWidth;
+                lastResizeHeight = newHeight;
+
+                dom.canvas.width = newWidth; 
+                dom.canvas.height = newHeight;
+                dom.graphCanvas.width = dom.graphCanvas.clientWidth; 
+                dom.graphCanvas.height = dom.graphCanvas.clientHeight;
+                dom.histogramCanvas.width = dom.histogramCanvas.clientWidth; 
+                dom.histogramCanvas.height = dom.histogramCanvas.clientHeight;
+                resetSimulation();
+            }
+
             function gameLoop() {
                 if (state.isPlaying) stepOnce();
                 draw(); drawGraph(); drawHistogram();
@@ -594,14 +616,6 @@
                 state.isPlaying = !state.isPlaying;
                 dom.playPauseBtn.textContent = state.isPlaying ? 'Pausa' : 'Play';
                 dom.stepBtn.disabled = state.isPlaying;
-            }
-
-            function resizeCanvas() {
-                const newWidth = dom.simulationWrapper.clientWidth;
-                dom.canvas.width = newWidth; dom.canvas.height = newWidth / 1.6;
-                dom.graphCanvas.width = dom.graphCanvas.clientWidth; dom.graphCanvas.height = dom.graphCanvas.clientHeight;
-                dom.histogramCanvas.width = dom.histogramCanvas.clientWidth; dom.histogramCanvas.height = dom.histogramCanvas.clientHeight;
-                resetSimulation();
             }
 
             function exportData() {
@@ -717,7 +731,16 @@
             function init() {
                 window.addEventListener('resize', resizeCanvas);
                 dom.playPauseBtn.addEventListener('click', togglePlayPause);
-                dom.stepBtn.addEventListener('click', () => { if(!state.isPlaying) { stepOnce(); draw(); drawGraph(); drawHistogram(); } });
+                dom.stepBtn.addEventListener('click', () => { 
+                    if(!state.isPlaying) { 
+                        stepOnce(); 
+                        draw(); 
+                        drawGraph(); 
+                        drawHistogram(); 
+                        dom.stepBtn.classList.add('bg-sky-400');
+                        setTimeout(() => { dom.stepBtn.classList.remove('bg-sky-400');}, 150);
+                    } 
+                });
                 dom.resetBtn.addEventListener('click', fullReset);
                 dom.timeResetBtn.addEventListener('click', resetSimulation);
                 dom.infoBtn.addEventListener('click', () => showInfoPopup());
